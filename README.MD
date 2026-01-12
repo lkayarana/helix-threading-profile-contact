@@ -1,77 +1,437 @@
-# Helix Threader (Profile + Contact Energy + Loop Constraints)
+# Helix Threader — Profile (PSSM) + Contact Energy + Loop Constraints
 
-This repository implements a **threading** algorithm for placing **3 helices (H1, H2, H3)** onto a protein sequence.
+This project implements a **protein helix threading** algorithm: given a protein sequence and three helix models (H1, H2, H3), the code finds the **best locations** of these helices on the sequence by maximizing a combined objective:
 
-Objective: find start positions (start1, start2, start3) that maximize:
+- **Profile similarity score** (from MSAs → PSSMs / profile matrices)
+- **Contact energy** (from a contact table + a contact energy matrix, e.g., Jernigan-like)
+- **Loop constraints** between helices (min/max loop lengths)
+- **No overlap** between helices
 
-- **Profile score** (PSSM/profile matrix built from helix MSAs)
-- **Contact energy** (from a contact table + a contact energy matrix)
-- Subject to **loop constraints** (min/max loop lengths between helices) and **no overlap**.
+It produces a full report including:
+- chosen helix placements and loop lengths
+- per-position profile score breakdown
+- per-contact energy breakdown (with residue mapping and energies)
+- total scores
 
-## Scoring
+---
 
-### Profile score
-For helix h with length Lh and start position start_h (0-based):
+## Why this exists (bioinformatics context)
 
-\[
-ProfileScore(h, start_h) = \sum_{k=1}^{L_h} P_h[ S[start_h + k - 1], k]
-\]
+In helix threading, you want to place secondary structure elements (helices) onto a sequence such that:
+1) each helix “looks like” known helices in your training set (via profile/PSSM)
+2) helices interact favorably (via contact energies)
+3) helices are connected realistically (via loop length constraints)
 
-### Contact energy
-Given a contact table list of pairs:
-(hA, posA) ↔ (hB, posB)
+This mimics a simplified structural bioinformatics scoring model used in fold recognition and threading.
 
-Map each (helix,pos) to an amino acid in the sequence:
-aaA = S[start(hA) + posA - 1]
-aaB = S[start(hB) + posB - 1]
+---
 
-Energy:
-\[
-ContactEnergy = \sum_{(A,B)\in contacts} C[aaA, aaB]
-\]
+## Inputs
 
-### Total score
-\[
-Total = \sum_h ProfileScore(h, start_h) + \lambda \cdot ContactEnergy
-\]
+You provide 5 inputs:
 
-## Search strategy
+1) **Full sequence** (FASTA)
+- `sequence.fasta` (single record)
 
-1. **Scan** all possible starts for each helix to get profile scores.
-2. **Fix** the helix with the strongest best profile hit.
-3. **Search** the remaining helix starts under loop constraints.
-4. Compute total score for each valid placement; return best.
+2) **Three helix MSAs** (FASTA)
+- `helix1_msa.fasta`
+- `helix2_msa.fasta`
+- `helix3_msa.fasta`
 
-(Optional) brute-force O(N^3) search exists for validation.
+Each MSA file contains multiple aligned helix sequences of the same length.  
+That length is the helix length `L1`, `L2`, `L3`.
 
-## Input formats
+3) **Contact table** (TSV)
+A list of contacts defined **in helix coordinate space**:
 
-### Sequence (FASTA)
-`data/example/sequence.fasta`
+hA posA hB posB
+1 1 2 1
+1 2 2 2
 
-### Helix MSA (FASTA)
-`data/example/helix1_msa.fasta`, `helix2_msa.fasta`, `helix3_msa.fasta`
 
-All sequences must have the same length per MSA (the helix length).
+- `hA`, `hB` are helix IDs: 1, 2, 3
+- `posA`, `posB` are **1-based positions within each helix**
 
-### Contact table (TSV)
-`data/example/contact_table.tsv`
+4) **Contact energy matrix** (TSV)
+A square matrix `C[a,b]` giving energy (or compatibility) for residues `a` and `b`.
 
-Columns:
-- hA, posA, hB, posB
-Positions are **1-based within helix**. Helix ids are 1,2,3.
+- Can be a full 20×20 amino acid matrix
+- Or a reduced alphabet (like the toy example: B / z / x)
 
-### Contact matrix (TSV)
-`data/example/contact_matrix.tsv`
+Example reduced alphabet:
 
-Header row and left column define the alphabet.
-Matrix values are numeric.
+  B    z    x
+B 20  -10   -15
+z -10  8     2
+x -15  2     10
 
-### Loop constraints (JSON)
-`data/example/loops.json`
-Example:
+
+5) **Loop constraints** (JSON)
+Defines realistic spacing constraints between helices:
+
 ```json
 {
   "12": {"min": 2, "max": 20},
-  "23": {"min": 2, "max": 25}
+  "23": {"min": 2, "max": 20}
 }
+
+Meaning:
+
+- loop12 = start2 - (start1 + L1) must be in [min, max]
+
+- loop23 = start3 - (start2 + L2) must be in [min, max]
+
+Scoring model
+1) Profile score (PSSM)
+
+For each helix h, we build a PSSM/profile matrix from its MSA.
+
+For a candidate placement starting at start_h (0-based):
+
+𝑃
+𝑟
+𝑜
+𝑓
+𝑖
+𝑙
+𝑒
+𝑆
+𝑐
+𝑜
+𝑟
+𝑒
+(
+ℎ
+,
+𝑠
+𝑡
+𝑎
+𝑟
+𝑡
+ℎ
+)
+=
+∑
+𝑘
+=
+1
+𝐿
+ℎ
+𝑃
+ℎ
+[
+𝑆
+[
+𝑠
+𝑡
+𝑎
+𝑟
+𝑡
+ℎ
++
+𝑘
+−
+1
+]
+,
+𝑘
+]
+ProfileScore(h,start
+h
+	​
+
+)=
+k=1
+∑
+L
+h
+	​
+
+	​
+
+P
+h
+	​
+
+[S[start
+h
+	​
+
++k−1],k]
+
+Where:
+
+P_h[aa,k] is the score of amino acid (or symbol) aa at helix position k
+
+S[...] is the sequence symbol at that aligned location
+
+Implementation detail:
+
+We compute a log-odds style PSSM with pseudocounts and scale it to integers.
+
+2) Contact energy score
+
+Given a contact pair:
+
+(
+ℎ
+𝐴
+,
+𝑝
+𝑜
+𝑠
+𝐴
+)
+↔
+(
+ℎ
+𝐵
+,
+𝑝
+𝑜
+𝑠
+𝐵
+)
+(h
+A
+	​
+
+,pos
+A
+	​
+
+)↔(h
+B
+	​
+
+,pos
+B
+	​
+
+)
+
+Map to sequence indices:
+
+i = start[hA] + posA - 1
+
+j = start[hB] + posB - 1
+
+Then sum:
+
+𝐶
+𝑜
+𝑛
+𝑡
+𝑎
+𝑐
+𝑡
+𝐸
+𝑛
+𝑒
+𝑟
+𝑔
+𝑦
+=
+∑
+𝐶
+[
+𝑆
+[
+𝑖
+]
+,
+𝑆
+[
+𝑗
+]
+]
+ContactEnergy=∑C[S[i],S[j]]
+3) Total score
+𝑇
+𝑜
+𝑡
+𝑎
+𝑙
+=
+∑
+ℎ
+𝑃
+𝑟
+𝑜
+𝑓
+𝑖
+𝑙
+𝑒
+𝑆
+𝑐
+𝑜
+𝑟
+𝑒
+(
+ℎ
+,
+𝑠
+𝑡
+𝑎
+𝑟
+𝑡
+ℎ
+)
++
+𝜆
+⋅
+𝐶
+𝑜
+𝑛
+𝑡
+𝑎
+𝑐
+𝑡
+𝐸
+𝑛
+𝑒
+𝑟
+𝑔
+𝑦
+Total=
+h
+∑
+	​
+
+ProfileScore(h,start
+h
+	​
+
+)+λ⋅ContactEnergy
+
+Usually λ = 1.0 (used here).
+
+Search algorithm (threading)
+
+We search for starts (start1, start2, start3) that maximize total score under constraints.
+
+Constraints enforced
+
+Ordering: H1 before H2 before H3 (typical threading chain)
+
+No overlap: helix intervals must not intersect
+
+Loop constraints: enforced exactly
+
+Method A — Fix-and-search (fast, recommended)
+
+Pre-scan each helix across the sequence to compute profile score for all possible starts
+
+Choose the helix with the strongest best profile hit (most confident)
+
+Fix that helix and search placements for others using loop constraints to shrink search space
+
+Evaluate total score for each valid placement
+
+Return the best placement
+
+Method B — Brute force (validation)
+
+Try all valid combinations that satisfy constraints (slower but exact).
+
+Example run (from this repo)
+
+Run the included demo:
+
+```bash
+helix-thread \
+  --seq data/example/sequence.fasta \
+  --msa1 data/example/helix1_msa.fasta \
+  --msa2 data/example/helix2_msa.fasta \
+  --msa3 data/example/helix3_msa.fasta \
+  --contacts data/example/contact_table.tsv \
+  --cmat data/example/contact_matrix.tsv \
+  --loops data/example/loops.json \
+  --lambda 1.0 \
+  --method fix \
+  --out outputs/run_001
+```
+
+Example result (Report Summary)
+
+Best placement
+
+H1: start=2, end=5, window=BzxB
+
+H2: start=8, end=11, window=Bzzz
+
+H3: start=14, end=17, window=xxxB
+
+Loop lengths
+
+loop12 = 2 (constraint (2, 20))
+
+loop23 = 2 (constraint (2, 20))
+
+Totals
+
+Profile total = 109
+
+Contact total = 9.0
+
+TOTAL = 118.0
+
+What the tool outputs
+
+Inside outputs/run_001/:
+
+report.md
+Human-readable report (placements + per-position profile breakdown + contact breakdown)
+
+result.json
+Machine-readable full result (same content as report, structured)
+
+contact_breakdown.tsv
+One row per contact, showing:
+
+helix positions → mapped sequence indices → symbols → energy values
+
+Understanding the example output (step-by-step)
+1) Profile scoring (why these windows are chosen)
+
+Each helix placement produces a per-position sum:
+
+H1 total = 45
+
+B (12) + z (9) + x (12) + B (12)
+
+H2 total = 45
+
+B (12) + z (12) + z (12) + z (9)
+
+H3 total = 19
+
+x (12) + x (12) + x (9) + B (-14)
+
+Total profile = 45 + 45 + 19 = 109
+
+Even though H3 position 4 has a strong penalty, the combined profile + contact + constraints still makes this placement optimal under the given toy data.
+
+2) Contact breakdown (how energy is computed)
+
+Each contact entry is mapped from helix coordinates to sequence residues:
+
+Example row:
+
+(H1,1) is at sequence index 2 → residue B
+
+(H2,1) is at sequence index 8 → residue B
+
+energy C(B,B)=20
+
+Summing all contacts yields 9.0 total contact energy:
+
+Contact	Residues	Energy
+H1,1–H2,1	B–B	20
+H1,2–H2,2	z–z	8
+H1,3–H2,3	x–z	2
+H1,4–H2,4	B–z	-10
+H2,2–H3,2	z–x	2
+H2,3–H3,3	z–x	2
+H1,1–H3,1	B–x	-15
+Total = 9.0		
