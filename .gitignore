@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.ipynb_checkpoints/
+outputs/run_*/
+outputs/*.json
+outputs/*.md
+outputs/*.tsv
