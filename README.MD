@@ -15,8 +15,6 @@ It produces a full report including:
 
 ---
 
-## Why this exists (bioinformatics context)
-
 In helix threading, you want to place secondary structure elements (helices) onto a sequence such that:
 1) each helix “looks like” known helices in your training set (via profile/PSSM)
 2) helices interact favorably (via contact energies)
