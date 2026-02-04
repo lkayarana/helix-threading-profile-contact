@@ -15,7 +15,7 @@ It produces a full report including:
 
 ---
 
-In helix threading, you want to place secondary structure elements (helices) onto a sequence such that:
+In helix threading, it is desire to place secondary structure elements (helices) onto a sequence such that:
 1) each helix “looks like” known helices in your training set (via profile/PSSM)
 2) helices interact favorably (via contact energies)
 3) helices are connected realistically (via loop length constraints)
@@ -26,12 +26,12 @@ This mimics a simplified structural bioinformatics scoring model used in fold re
 
 ## Inputs
 
-You provide 5 inputs:
+5 inputs need to be provided:
 
 1) **Full sequence** (FASTA)
 - `sequence.fasta` (single record)
 
-2) **Three helix MSAs** (FASTA)
+2) **Three helix MSA's** (FASTA)
 - `helix1_msa.fasta`
 - `helix2_msa.fasta`
 - `helix3_msa.fasta`
@@ -43,8 +43,8 @@ That length is the helix length `L1`, `L2`, `L3`.
 A list of contacts defined **in helix coordinate space**:
 
 hA posA hB posB
-1 1 2 1
-1 2 2 2
+ 1   1   2   1
+ 1   2   2   2
 
 
 - `hA`, `hB` are helix IDs: 1, 2, 3
@@ -83,9 +83,9 @@ Meaning:
 
 Search algorithm (threading)
 
-We search for starts (start1, start2, start3) that maximize total score under constraints.
+The project searchs for starts (start1, start2, start3) that maximize total score under constraints.
 
-Constraints enforced
+Constraints enforced;
 
 Ordering: H1 before H2 before H3 (typical threading chain)
 
@@ -185,7 +185,7 @@ x (12) + x (12) + x (9) + B (-14)
 
 Total profile = 45 + 45 + 19 = 109
 
-Even though H3 position 4 has a strong penalty, the combined profile + contact + constraints still makes this placement optimal under the given toy data.
+Even though H3 position 4 has a strong penalty, the combined profile + contact + constraints still makes this placement optimal under the given data.
 
 2) Contact breakdown (how energy is computed)
 
